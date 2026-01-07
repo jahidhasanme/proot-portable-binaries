@@ -27,7 +27,7 @@ jobs:
       - name: Clone termux-packages
         run: git clone https://github.com/termux/termux-packages.git
 
-      - name: Add proot-portable package (build.sh)
+      - name: Add proot-portable package
         run: |
           mkdir -p termux-packages/packages/proot-portable
           cp build.sh termux-packages/packages/proot-portable/build.sh
@@ -36,11 +36,23 @@ jobs:
         working-directory: ./termux-packages
         run: ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -I proot-portable
 
+      - name: Collect .deb output
+        run: |
+          mkdir -p dist
+          # Termux build output commonly lands in termux-packages/output
+          # Copy only proot-portable debs if present; otherwise copy whole output for debugging
+          if ls termux-packages/output/*proot-portable*_${{ matrix.target_arch }}.deb >/dev/null 2>&1; then
+            cp -v termux-packages/output/*proot-portable*_${{ matrix.target_arch }}.deb dist/
+          else
+            # Fallback: copy anything related (keeps the build deb(s) available)
+            cp -v termux-packages/output/*.deb dist/ || true
+          fi
+
       - name: Upload artifact proot-${{ matrix.target_arch }}
         uses: actions/upload-artifact@v4
         with:
           name: proot-${{ matrix.target_arch }}
-          path: termux-packages/proot
+          path: dist
           if-no-files-found: error
 
   pages:
@@ -54,7 +66,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare public directory
+      - name: Prepare public folders
         run: |
           rm -rf public
           mkdir -p public/x86_64 public/aarch64 public/armv7 public/x86
@@ -82,6 +94,35 @@ jobs:
         with:
           name: proot-i686
           path: public/x86
+
+      - name: Create simple index.html
+        run: |
+          cat > public/index.html <<'HTML'
+          <!doctype html>
+          <html>
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>proot-portable builds</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 24px; }
+              code { background: #f2f2f2; padding: 2px 6px; border-radius: 4px; }
+              ul { line-height: 1.8; }
+            </style>
+          </head>
+          <body>
+            <h2>proot-portable builds</h2>
+            <p>Download the <code>.deb</code> for your architecture:</p>
+            <ul>
+              <li><a href="./aarch64/">aarch64 (arm64-v8a)</a></li>
+              <li><a href="./armv7/">arm (armv7)</a></li>
+              <li><a href="./x86_64/">x86_64</a></li>
+              <li><a href="./x86/">i686 (x86)</a></li>
+            </ul>
+            <p>If your browser doesn't list files in the folder view, use GitHub Actions artifacts or add a file listing step.</p>
+          </body>
+          </html>
+          HTML
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
